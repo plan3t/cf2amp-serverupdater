@@ -20,7 +20,7 @@ LOGGER = logging.getLogger("cf2amp")
 class Orchestrator:
     def __init__(
         self,
-        client: CurseForgeClient,
+        client: CurseForgeClient | None,
         backup_manager: BackupManager | None = None,
         validator: Validator | None = None,
     ) -> None:
@@ -40,16 +40,27 @@ class Orchestrator:
             LOGGER.info("backup_created", extra={"run_id": run_id, "backup": str(backup.path)})
 
         try:
-            result = ServerUpdater(self.client).update(
-                UpdateOptions(
+            if config.source.type.lower() in {"localserverpack", "local-server-pack", "local_server_pack"}:
+                if config.source.path is None:
+                    raise CurseForgeError("source.path is required for localServerPack mode")
+                result = ServerUpdater(None).update_from_local_server_pack(
                     server_dir=server_dir,
-                    modpack_project_id=config.modpack_id,
+                    archive_path=config.source.path,
                     minecraft_version=config.minecraft_version,
-                    use_server_pack=config.update_policy.prefer_server_pack,
                     remove_missing=config.update_policy.remove_missing,
                     dry_run=dry_run,
                 )
-            )
+            else:
+                result = ServerUpdater(self.client).update(
+                    UpdateOptions(
+                        server_dir=server_dir,
+                        modpack_project_id=config.modpack_id,
+                        minecraft_version=config.minecraft_version,
+                        use_server_pack=config.update_policy.prefer_server_pack,
+                        remove_missing=config.update_policy.remove_missing,
+                        dry_run=dry_run,
+                    )
+                )
             warnings.extend(result.skipped)
             warnings.extend(
                 self.validator.smoke_test(

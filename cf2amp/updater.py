@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import shutil
 import tempfile
 import zipfile
@@ -38,10 +37,12 @@ class UpdateResult:
 
 
 class ServerUpdater:
-    def __init__(self, client: CurseForgeClient) -> None:
+    def __init__(self, client: CurseForgeClient | None) -> None:
         self.client = client
 
     def update(self, options: UpdateOptions) -> UpdateResult:
+        if self.client is None:
+            raise CurseForgeError("CurseForge client is required for CurseForge API updates")
         server_dir = options.server_dir.resolve()
         mods_dir = server_dir / "mods"
         if not options.dry_run:
@@ -67,7 +68,50 @@ class ServerUpdater:
                     return self._apply_server_pack(zf, options, state, modpack_file)
                 return self._apply_manifest_pack(zf, options, state, modpack_file)
 
+    def update_from_local_server_pack(
+        self,
+        server_dir: Path,
+        archive_path: Path,
+        minecraft_version: str | None = None,
+        remove_missing: bool = False,
+        dry_run: bool = False,
+    ) -> UpdateResult:
+        server_dir = server_dir.resolve()
+        mods_dir = server_dir / "mods"
+        archive_path = archive_path.resolve()
+        if not archive_path.exists():
+            raise CurseForgeError(f"Local server pack not found: {archive_path}")
+        if not dry_run:
+            server_dir.mkdir(parents=True, exist_ok=True)
+            mods_dir.mkdir(parents=True, exist_ok=True)
+
+        digest = self._sha256_file(archive_path)
+        modpack_file = ModpackFile(
+            id=int(digest[:12], 16),
+            display_name=archive_path.name,
+            file_name=archive_path.name,
+            download_url=None,
+            release_type=1,
+            game_versions=[],
+            server_pack_file_id=None,
+            file_date=None,
+        )
+        options = UpdateOptions(
+            server_dir=server_dir,
+            modpack_project_id=0,
+            modpack_file_id=modpack_file.id,
+            minecraft_version=minecraft_version,
+            use_server_pack=True,
+            remove_missing=remove_missing,
+            dry_run=dry_run,
+        )
+        state = ServerState.load(server_dir)
+        with zipfile.ZipFile(archive_path) as zf:
+            return self._apply_server_pack(zf, options, state, modpack_file)
+
     def _select_modpack_file(self, options: UpdateOptions) -> ModpackFile:
+        if self.client is None:
+            raise CurseForgeError("CurseForge client is required for CurseForge API updates")
         if options.modpack_file_id:
             return self.client.get_file(options.modpack_project_id, options.modpack_file_id)
         files = self.client.get_files(options.modpack_project_id, options.minecraft_version)
@@ -222,6 +266,8 @@ class ServerUpdater:
         return UpdateResult(modpack_file, "manifest", sorted(added), sorted(updated), removed, skipped, delta)
 
     def _download_file(self, project_id: int, cf_file: ModpackFile, destination: Path) -> None:
+        if self.client is None:
+            raise CurseForgeError("CurseForge client is required for downloads")
         url = cf_file.download_url or self.client.get_download_url(project_id, cf_file.id)
         self.client.download(url, str(destination))
 

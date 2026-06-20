@@ -23,6 +23,8 @@ def main(argv: list[str] | None = None) -> int:
             return rollback(args)
         if args.command == "run":
             return run_config(args)
+        if args.command == "apply-server-pack":
+            return apply_server_pack(args)
 
         api_key = args.api_key or os.environ.get("CURSEFORGE_API_KEY")
         if not api_key:
@@ -61,6 +63,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Do not prefer CurseForge server packs; install from manifest instead.",
     )
     update_parser.add_argument("--dry-run", action="store_true")
+
+    local_parser = subparsers.add_parser("apply-server-pack", help="Apply a local CurseForge server-pack ZIP without API access.")
+    local_parser.add_argument("--server-dir", required=True, type=Path)
+    local_parser.add_argument("--archive", required=True, type=Path)
+    local_parser.add_argument("--minecraft-version")
+    local_parser.add_argument("--remove-missing", action="store_true")
+    local_parser.add_argument("--dry-run", action="store_true")
 
     run_parser = subparsers.add_parser("run", help="Run an update from a YAML or JSON config file.")
     run_parser.add_argument("--config", required=True, type=Path)
@@ -113,11 +122,33 @@ def update(client: CurseForgeClient, args: argparse.Namespace) -> int:
     return 0
 
 
+def apply_server_pack(args: argparse.Namespace) -> int:
+    result = ServerUpdater(None).update_from_local_server_pack(
+        server_dir=args.server_dir,
+        archive_path=args.archive,
+        minecraft_version=args.minecraft_version,
+        remove_missing=args.remove_missing,
+        dry_run=args.dry_run,
+    )
+    print(f"Server pack: {result.modpack_file.display_name}")
+    print(f"Added: {len(result.added)}")
+    for name in result.added:
+        print(f"  + {name}")
+    print(f"Updated: {len(result.updated)}")
+    for name in result.updated:
+        print(f"  ~ {name}")
+    print(f"Removed: {len(result.removed)}")
+    for name in result.removed:
+        print(f"  - {name}")
+    return 0
+
+
 def run_config(args: argparse.Namespace) -> int:
     config = load_config(args.config)
-    if not config.curseforge_api_key:
+    is_local_pack = config.source.type.lower() in {"localserverpack", "local-server-pack", "local_server_pack"}
+    if not is_local_pack and not config.curseforge_api_key:
         raise CurseForgeError("Set curseforgeApiKey in the config or CURSEFORGE_API_KEY")
-    client = CurseForgeClient(config.curseforge_api_key)
+    client = CurseForgeClient(config.curseforge_api_key) if config.curseforge_api_key else None
     report = Orchestrator(client).run(config, dry_run=args.dry_run)
     print(json.dumps(report.to_dict(), indent=2))
     return 0

@@ -1,0 +1,10 @@
+[Unit]
+Description=Nightly cf2amp Minecraft modpack update
+
+[Timer]
+OnCalendar=*-*-* 04:30:00
+Persistent=true
+Unit=cf2amp-update.service
+
+[Install]
+WantedBy=timers.target

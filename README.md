@@ -21,6 +21,46 @@ cf2amp search "All the Mods 10"
 cf2amp update --server-dir /opt/minecraft/server --modpack-id 925200 --minecraft-version 1.21.1
 ```
 
+## Without CurseForge API Access
+
+If you only have a CurseForge author token and it returns `403` against the
+Core API, download the CurseForge server-pack ZIP manually and apply it locally:
+
+```bash
+cf2amp apply-server-pack \
+  --server-dir /opt/minecraft/server \
+  --archive /opt/cf2amp/packs/latest-server-pack.zip \
+  --minecraft-version 1.21.1
+```
+
+Config-driven local ZIP mode:
+
+```yaml
+source:
+  type: "localServerPack"
+  path: "./packs/latest-server-pack.zip"
+serverDir: "/server"
+minecraftVersion: "1.21.1"
+```
+
+## Web UI
+
+Run the local admin interface on port `8080`:
+
+```bash
+docker compose -f docker-compose.web.yml up -d
+```
+
+Local Python run:
+
+```bash
+pip install .
+cf2amp-web
+```
+
+The web app supports AMP instance scanning, settings management, server-pack ZIP
+uploads, update previews, live update logs, backup listing, and rollback jobs.
+
 ## Docker
 
 ```bash
@@ -53,6 +93,9 @@ Deployment with the published image:
 ```bash
 docker compose -f docker-compose.deploy.yml run --rm cf2amp
 ```
+
+For a fuller Ubuntu server setup with Compose and optional systemd timer, see
+[deploy/ubuntu/README.md](deploy/ubuntu/README.md).
 
 ## Rollback
 

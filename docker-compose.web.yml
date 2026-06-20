@@ -1,0 +1,18 @@
+services:
+  cf2amp-web:
+    build: .
+    image: ghcr.io/plan3t/cf2amp-serverupdater:latest
+    entrypoint: ["cf2amp-web"]
+    user: "${PUID:-1000}:${PGID:-1000}"
+    environment:
+      CF2AMP_WEB_CONFIG: "/config/cf2amp-web.json"
+      CF2AMP_PACK_DIR: "/packs"
+      CURSEFORGE_API_KEY: "${CURSEFORGE_API_KEY:-}"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config:/config
+      - ./packs:/packs
+      - ${SERVER_DIR:-/opt/minecraft/server}:/server
+      - ${AMP_INSTANCES_DIR:-/opt/cubecoders/amp/instances}:/opt/cubecoders/amp/instances:ro
+    restart: unless-stopped

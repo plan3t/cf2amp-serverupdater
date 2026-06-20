@@ -25,11 +25,18 @@ class UpdatePolicy:
 
 
 @dataclass(frozen=True)
+class SourceConfig:
+    type: str = "curseforge"
+    path: Path | None = None
+
+
+@dataclass(frozen=True)
 class AppConfig:
     curseforge_api_key: str | None
     modpack_id: int
     minecraft_version: str | None
     server_dir: Path
+    source: SourceConfig = SourceConfig()
     java_path: str = "java"
     java_opts: str = "-Xmx2G -Xms1G"
     loader: str | None = None
@@ -38,15 +45,28 @@ class AppConfig:
 
 
 def load_config(path: Path) -> AppConfig:
+    path = path.resolve()
     data = _load_document(path)
+    source_data = data.get("source", {})
+    source_type = source_data.get("type") or ("curseforge" if data.get("modpackId") else "localServerPack")
+    source_path = source_data.get("path")
+    resolved_source_path = None
+    if source_path:
+        resolved_source_path = Path(source_path)
+        if not resolved_source_path.is_absolute():
+            resolved_source_path = path.parent / resolved_source_path
     curseforge_api_key = data.get("curseforgeApiKey") or os.environ.get("CURSEFORGE_API_KEY")
     policy = data.get("updatePolicy", {})
     backup = data.get("backupPolicy", {})
     return AppConfig(
         curseforge_api_key=curseforge_api_key,
-        modpack_id=int(data["modpackId"]),
+        modpack_id=int(data.get("modpackId", 0)),
         minecraft_version=data.get("minecraftVersion"),
         server_dir=Path(data["serverDir"]),
+        source=SourceConfig(
+            type=source_type,
+            path=resolved_source_path,
+        ),
         java_path=data.get("javaPath", "java"),
         java_opts=data.get("javaOpts", "-Xmx2G -Xms1G"),
         loader=data.get("loader"),

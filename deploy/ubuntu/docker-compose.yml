@@ -1,0 +1,11 @@
+services:
+  cf2amp:
+    image: ghcr.io/plan3t/cf2amp-serverupdater:latest
+    user: "${PUID:-1000}:${PGID:-1000}"
+    environment:
+      CURSEFORGE_API_KEY: "${CURSEFORGE_API_KEY:?set CURSEFORGE_API_KEY in .env}"
+    volumes:
+      - ./config.yaml:/config/config.yaml:ro
+      - ${SERVER_DIR:?set SERVER_DIR in .env}:/server
+    command: ["run", "--config", "/config/config.yaml"]
+    restart: "no"

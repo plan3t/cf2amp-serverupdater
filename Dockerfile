@@ -5,4 +5,6 @@ COPY pyproject.toml README.md /app/
 COPY cf2amp /app/cf2amp
 RUN pip install --no-cache-dir .
 
+EXPOSE 8080
+
 ENTRYPOINT ["cf2amp"]
