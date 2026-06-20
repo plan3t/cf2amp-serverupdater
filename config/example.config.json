@@ -1,0 +1,21 @@
+{
+  "modpackId": 925200,
+  "minecraftVersion": "1.21.1",
+  "serverDir": "/server",
+  "javaPath": "java",
+  "javaOpts": "-Xmx4G -Xms2G",
+  "loader": "neoforge",
+  "updatePolicy": {
+    "mode": "delta",
+    "removeMissing": false,
+    "preferServerPack": true,
+    "rollbackOnFailure": true,
+    "startupValidationSeconds": 20
+  },
+  "backupPolicy": {
+    "enabled": true,
+    "keepLast": 3,
+    "includeWorld": true,
+    "includeConfig": true
+  }
+}

@@ -1,0 +1,9 @@
+services:
+  cf2amp:
+    image: ghcr.io/plan3t/cf2amp-serverupdater:latest
+    environment:
+      CURSEFORGE_API_KEY: "${CURSEFORGE_API_KEY}"
+    volumes:
+      - ./config/example.config.yaml:/config/config.yaml:ro
+      - /opt/minecraft/server:/server
+    command: ["run", "--config", "/config/config.yaml"]

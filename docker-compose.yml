@@ -1,0 +1,17 @@
+services:
+  cf2amp:
+    build: .
+    environment:
+      CURSEFORGE_API_KEY: "${CURSEFORGE_API_KEY}"
+      CONFIG_PATH: "/config/config.yaml"
+      SERVER_DIR: "/server"
+    volumes:
+      - ./config/example.config.yaml:/config/config.yaml:ro
+      - ./samples/server:/server
+    command: ["run", "--config", "/config/config.yaml"]
+
+  # Optional local log collector placeholder. Replace with Loki, Vector, or Fluent Bit
+  # in production if centralized logs are desired.
+  redis:
+    image: redis:7-alpine
+    profiles: ["observability"]
