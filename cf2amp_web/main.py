@@ -119,11 +119,17 @@ def create_app() -> FastAPI:
         if not file.filename or not file.filename.lower().endswith(".zip"):
             raise HTTPException(status_code=400, detail="Upload a .zip server pack")
         pack_dir = default_pack_dir()
-        pack_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            pack_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise HTTPException(status_code=500, detail=f"Cannot create pack directory {pack_dir}: {exc}") from exc
         safe_name = Path(file.filename).name
         target = pack_dir / f"{int(time.time())}-{safe_name}"
-        with target.open("wb") as handle:
-            shutil.copyfileobj(file.file, handle)
+        try:
+            with target.open("wb") as handle:
+                shutil.copyfileobj(file.file, handle)
+        except OSError as exc:
+            raise HTTPException(status_code=500, detail=f"Cannot write uploaded pack to {target}: {exc}") from exc
         settings = settings_store().load()
         settings.local_server_pack = str(target)
         settings.source_type = "localServerPack"
