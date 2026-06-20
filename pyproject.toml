@@ -22,5 +22,8 @@ cf2amp-web = "cf2amp_web.main:main"
 [tool.setuptools.package-data]
 cf2amp_web = ["templates/*.html", "static/*"]
 
+[tool.setuptools.packages.find]
+include = ["cf2amp", "cf2amp_web"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

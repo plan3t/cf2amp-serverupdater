@@ -8,11 +8,13 @@ services:
       CF2AMP_WEB_CONFIG: "/config/cf2amp-web.json"
       CF2AMP_PACK_DIR: "/packs"
       CURSEFORGE_API_KEY: "${CURSEFORGE_API_KEY:-}"
+      SERVER_DIR: "${SERVER_DIR:-/opt/minecraft/server}"
+      AMP_INSTANCES_DIR: "${AMP_INSTANCES_DIR:-/opt/cubecoders/amp/instances}"
     ports:
-      - "8080:8080"
+      - "${WEB_PORT:-8080}:8080"
     volumes:
       - ./config:/config
       - ./packs:/packs
       - ${SERVER_DIR:-/opt/minecraft/server}:/server
-      - ${AMP_INSTANCES_DIR:-/opt/cubecoders/amp/instances}:/opt/cubecoders/amp/instances:ro
+      - ${AMP_INSTANCES_DIR:-/opt/cubecoders/amp/instances}:${AMP_INSTANCES_DIR:-/opt/cubecoders/amp/instances}
     restart: unless-stopped

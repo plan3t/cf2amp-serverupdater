@@ -7,11 +7,13 @@ services:
       CF2AMP_WEB_CONFIG: "/config/cf2amp-web.json"
       CF2AMP_PACK_DIR: "/packs"
       CURSEFORGE_API_KEY: "${CURSEFORGE_API_KEY:-}"
+      SERVER_DIR: "${SERVER_DIR:?set SERVER_DIR in .env}"
+      AMP_INSTANCES_DIR: "${AMP_INSTANCES_DIR:-/opt/cubecoders/amp/instances}"
     ports:
       - "${WEB_PORT:-8080}:8080"
     volumes:
       - ./config:/config
       - ./packs:/packs
       - ${SERVER_DIR:?set SERVER_DIR in .env}:/server
-      - ${AMP_INSTANCES_DIR:-/opt/cubecoders/amp/instances}:/opt/cubecoders/amp/instances:ro
+      - ${AMP_INSTANCES_DIR:-/opt/cubecoders/amp/instances}:${AMP_INSTANCES_DIR:-/opt/cubecoders/amp/instances}
     restart: unless-stopped
