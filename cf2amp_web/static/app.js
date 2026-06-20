@@ -136,6 +136,12 @@ async function uploadServerPack(event) {
   const payload = await api("/api/upload", { method: "POST", body: form });
   fillSettings(payload.settings);
   logLine(`Server-Pack hochgeladen: ${payload.path}`);
+  if (payload.detected?.message) {
+    logLine(payload.detected.message);
+  }
+  if (payload.detected?.source_type === "localCurseForgeExport") {
+    logLine("Hinweis: Diese CurseForge Export-ZIP enthält keine Mod-JARs. Für Updates brauchst du eine echte Server-Pack-ZIP oder einen CurseForge Core API-Key.");
+  }
   setStatus("Bereit");
 }
 

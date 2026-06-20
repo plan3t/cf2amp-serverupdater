@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import shutil
 import time
+import zipfile
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -130,11 +131,12 @@ def create_app() -> FastAPI:
                 shutil.copyfileobj(file.file, handle)
         except OSError as exc:
             raise HTTPException(status_code=500, detail=f"Cannot write uploaded pack to {target}: {exc}") from exc
+        detected = detect_uploaded_pack_type(target)
         settings = settings_store().load()
         settings.local_server_pack = str(target)
-        settings.source_type = "localServerPack"
+        settings.source_type = detected["source_type"]
         settings_store().save(settings)
-        return {"path": str(target), "settings": settings.sanitized()}
+        return {"path": str(target), "settings": settings.sanitized(), "detected": detected}
 
     @app.post("/api/preview")
     async def preview(payload: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -235,6 +237,12 @@ def preview_update(settings: WebSettings):
             remove_missing=config.update_policy.remove_missing,
             dry_run=True,
         )
+    if source_type in {"localcurseforgeexport", "local-curseforge-export", "local_curseforge_export"}:
+        raise RuntimeError(
+            "This ZIP is a CurseForge export/share ZIP. It contains manifest.json and overrides, "
+            "but no mod JARs. Upload a real server-pack ZIP, or configure a CurseForge Core API key "
+            "once manifest-based downloads are enabled."
+        )
     if not config.curseforge_api_key:
         raise RuntimeError("CurseForge Core API key is required for API preview")
     return ServerUpdater(CurseForgeClient(config.curseforge_api_key)).update(
@@ -257,6 +265,42 @@ def list_backups(server_dir: Path) -> list[dict[str, str]]:
     for item in sorted([path for path in backup_root.iterdir() if path.is_dir()], reverse=True):
         backups.append({"id": item.name, "path": str(item)})
     return backups
+
+
+def detect_uploaded_pack_type(path: Path) -> dict[str, Any]:
+    try:
+        with zipfile.ZipFile(path) as archive:
+            names = [entry.filename.replace("\\", "/") for entry in archive.infolist()]
+    except zipfile.BadZipFile as exc:
+        raise HTTPException(status_code=400, detail="Uploaded file is not a valid ZIP archive") from exc
+
+    jar_count = sum(1 for name in names if name.lower().endswith(".jar"))
+    has_manifest = "manifest.json" in names
+    has_modlist = "modlist.html" in names
+    overrides_count = sum(1 for name in names if name.startswith("overrides/"))
+
+    if jar_count:
+        return {
+            "source_type": "localServerPack",
+            "jar_count": jar_count,
+            "has_manifest": has_manifest,
+            "has_modlist": has_modlist,
+            "overrides_count": overrides_count,
+            "message": f"Detected server pack with {jar_count} JAR files.",
+        }
+    if has_manifest:
+        return {
+            "source_type": "localCurseForgeExport",
+            "jar_count": jar_count,
+            "has_manifest": has_manifest,
+            "has_modlist": has_modlist,
+            "overrides_count": overrides_count,
+            "message": "Detected CurseForge export/share ZIP. It contains manifest references, not mod JARs.",
+        }
+    raise HTTPException(
+        status_code=400,
+        detail="ZIP does not look like a server pack or CurseForge export. Expected mods/*.jar or manifest.json.",
+    )
 
 
 def delta_payload(delta: DeltaPlan) -> dict[str, Any]:

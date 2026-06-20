@@ -43,6 +43,12 @@ serverDir: "/server"
 minecraftVersion: "1.21.1"
 ```
 
+CurseForge Share/Export ZIPs are different from server packs. They contain
+`manifest.json` and `overrides/`, but usually no `mods/*.jar` files. cf2amp can
+detect them and explain why they cannot be applied directly. Upload the real
+server-pack ZIP instead, or use a CurseForge Core API key once manifest-based
+downloads are enabled.
+
 ## Web UI
 
 Run the local admin interface on port `8080`:
