@@ -89,10 +89,16 @@ class JobManager:
 
 def run_update_job(manager: JobManager, job: Job, settings: WebSettings, dry_run: bool = False) -> None:
     config = settings.to_app_config()
+    source_type = config.source.type.lower()
     manager.emit(job, "preflight", f"Server directory: {config.server_dir}")
-    if config.source.type.lower() in {"localserverpack", "local-server-pack", "local_server_pack"}:
+    if source_type in {"localserverpack", "local-server-pack", "local_server_pack"}:
         manager.emit(job, "source", f"Using local server pack: {config.source.path}")
         client = None
+    elif source_type in {"localcurseforgeexport", "local-curseforge-export", "local_curseforge_export"}:
+        manager.emit(job, "source", f"Using local CurseForge export ZIP: {config.source.path}")
+        if not config.curseforge_api_key:
+            raise RuntimeError("CurseForge API key is required for CurseForge export ZIP mode")
+        client = CurseForgeClient(config.curseforge_api_key)
     else:
         manager.emit(job, "source", f"Using CurseForge modpack ID: {config.modpack_id}")
         if not config.curseforge_api_key:

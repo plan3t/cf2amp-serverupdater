@@ -238,10 +238,16 @@ def preview_update(settings: WebSettings):
             dry_run=True,
         )
     if source_type in {"localcurseforgeexport", "local-curseforge-export", "local_curseforge_export"}:
-        raise RuntimeError(
-            "This ZIP is a CurseForge export/share ZIP. It contains manifest.json and overrides, "
-            "but no mod JARs. Upload a real server-pack ZIP, or configure a CurseForge Core API key "
-            "once manifest-based downloads are enabled."
+        if config.source.path is None:
+            raise RuntimeError("Upload or select a local CurseForge export ZIP first")
+        if not config.curseforge_api_key:
+            raise RuntimeError("CurseForge Core API key is required for CurseForge export ZIP preview")
+        return ServerUpdater(CurseForgeClient(config.curseforge_api_key)).update_from_local_curseforge_export(
+            server_dir=config.server_dir,
+            archive_path=config.source.path,
+            minecraft_version=config.minecraft_version,
+            remove_missing=config.update_policy.remove_missing,
+            dry_run=True,
         )
     if not config.curseforge_api_key:
         raise RuntimeError("CurseForge Core API key is required for API preview")

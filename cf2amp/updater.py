@@ -109,6 +109,55 @@ class ServerUpdater:
         with zipfile.ZipFile(archive_path) as zf:
             return self._apply_server_pack(zf, options, state, modpack_file)
 
+    def update_from_local_curseforge_export(
+        self,
+        server_dir: Path,
+        archive_path: Path,
+        minecraft_version: str | None = None,
+        remove_missing: bool = False,
+        dry_run: bool = False,
+    ) -> UpdateResult:
+        if self.client is None:
+            raise CurseForgeError("CurseForge client is required for CurseForge export ZIP updates")
+        server_dir = server_dir.resolve()
+        mods_dir = server_dir / "mods"
+        archive_path = archive_path.resolve()
+        if not archive_path.exists():
+            raise CurseForgeError(f"Local CurseForge export not found: {archive_path}")
+        if not dry_run:
+            server_dir.mkdir(parents=True, exist_ok=True)
+            mods_dir.mkdir(parents=True, exist_ok=True)
+
+        digest = self._sha256_file(archive_path)
+        with zipfile.ZipFile(archive_path) as zf:
+            manifest = self._read_manifest(zf)
+            manifest_minecraft = manifest.get("minecraft", {}).get("version")
+            if minecraft_version and manifest_minecraft and manifest_minecraft != minecraft_version:
+                raise CurseForgeError(
+                    f"CurseForge export targets Minecraft {manifest_minecraft}, expected {minecraft_version}"
+                )
+            modpack_file = ModpackFile(
+                id=int(digest[:12], 16),
+                display_name=manifest.get("name") or archive_path.name,
+                file_name=archive_path.name,
+                download_url=None,
+                release_type=1,
+                game_versions=[manifest_minecraft] if manifest_minecraft else [],
+                server_pack_file_id=None,
+                file_date=None,
+            )
+            options = UpdateOptions(
+                server_dir=server_dir,
+                modpack_project_id=0,
+                modpack_file_id=modpack_file.id,
+                minecraft_version=minecraft_version,
+                use_server_pack=False,
+                remove_missing=remove_missing,
+                dry_run=dry_run,
+            )
+            state = ServerState.load(server_dir)
+            return self._apply_manifest_pack(zf, options, state, modpack_file)
+
     def _select_modpack_file(self, options: UpdateOptions) -> ModpackFile:
         if self.client is None:
             raise CurseForgeError("CurseForge client is required for CurseForge API updates")
@@ -197,7 +246,14 @@ class ServerUpdater:
         state: ServerState,
         modpack_file: ModpackFile,
     ) -> UpdateResult:
+        if self.client is None:
+            raise CurseForgeError("CurseForge client is required for manifest-based updates")
         manifest = self._read_manifest(archive)
+        manifest_minecraft = manifest.get("minecraft", {}).get("version")
+        if options.minecraft_version and manifest_minecraft and manifest_minecraft != options.minecraft_version:
+            raise CurseForgeError(
+                f"Modpack manifest targets Minecraft {manifest_minecraft}, expected {options.minecraft_version}"
+            )
         files = [item for item in manifest.get("files", []) if item.get("required", True)]
         server_dir = options.server_dir.resolve()
         existing = state.managed_files
@@ -209,6 +265,17 @@ class ServerUpdater:
         from .delta import DeltaEngine
 
         delta = DeltaEngine().calculate(state, desired_manifest, options.remove_missing)
+
+        if options.dry_run:
+            return UpdateResult(
+                modpack_file,
+                "manifest",
+                sorted(item.file_name for item in delta.added),
+                sorted(item.file_name for _, item in delta.updated),
+                sorted(item.file_name for item in delta.removed),
+                [],
+                delta,
+            )
 
         if not options.dry_run:
             self._backup_managed_files(server_dir, state)

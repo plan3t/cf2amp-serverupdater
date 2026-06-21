@@ -4,6 +4,7 @@ import zipfile
 from pathlib import Path
 
 from cf2amp.config import load_config
+from cf2amp.curseforge import ModpackFile
 from cf2amp.delta import DeltaEngine
 from cf2amp.models import ModMetadata, ModpackManifest
 from cf2amp.state import ManagedFile, ServerState
@@ -52,6 +53,38 @@ def test_delta_engine_tracks_added_updated_and_optional_removals() -> None:
     assert [item.file_name for item in plan.removed] == ["mods/c-1.jar"]
 
 
+def test_local_curseforge_export_preview_uses_manifest_delta(tmp_path: Path) -> None:
+    archive_path = make_curseforge_export(tmp_path)
+    server_dir = tmp_path / "server"
+
+    result = ServerUpdater(FakeCurseForgeClient()).update_from_local_curseforge_export(
+        server_dir=server_dir,
+        archive_path=archive_path,
+        minecraft_version="1.21.1",
+        dry_run=True,
+    )
+
+    assert result.mode == "manifest"
+    assert [item.file_name for item in result.delta.added] == ["100-200.jar"]
+    assert not (server_dir / "mods" / "example.jar").exists()
+
+
+def test_local_curseforge_export_installs_referenced_mods(tmp_path: Path) -> None:
+    archive_path = make_curseforge_export(tmp_path)
+    server_dir = tmp_path / "server"
+
+    result = ServerUpdater(FakeCurseForgeClient()).update_from_local_curseforge_export(
+        server_dir=server_dir,
+        archive_path=archive_path,
+        minecraft_version="1.21.1",
+    )
+
+    installed = server_dir / "mods" / "example.jar"
+    assert result.added == ["example.jar"]
+    assert installed.read_bytes() == b"jar"
+    assert ServerState.load(server_dir).managed_files["100"].file_id == 200
+
+
 def test_minimal_yaml_config_loader(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("CURSEFORGE_API_KEY", "secret")
     config_path = tmp_path / "config.yaml"
@@ -74,3 +107,47 @@ def test_minimal_yaml_config_loader(tmp_path: Path, monkeypatch) -> None:
     assert config.curseforge_api_key == "secret"
     assert config.modpack_id == 123
     assert config.update_policy.remove_missing is True
+
+
+def make_curseforge_export(tmp_path: Path) -> Path:
+    archive_path = tmp_path / "client-export.zip"
+    with zipfile.ZipFile(archive_path, "w") as zf:
+        zf.writestr(
+            "manifest.json",
+            """
+            {
+              "name": "Example Export",
+              "minecraft": {
+                "version": "1.21.1",
+                "modLoaders": [{"id": "neoforge-21.1.233", "primary": true}]
+              },
+              "files": [
+                {"projectID": 100, "fileID": 200, "required": true}
+              ],
+              "overrides": "overrides"
+            }
+            """,
+        )
+        zf.writestr("modlist.html", "<ul></ul>")
+        zf.writestr("overrides/config/example.toml", "value = true")
+    return archive_path
+
+
+class FakeCurseForgeClient:
+    def get_file(self, mod_id: int, file_id: int) -> ModpackFile:
+        assert mod_id == 100
+        assert file_id == 200
+        return ModpackFile(
+            id=file_id,
+            display_name="Example",
+            file_name="example.jar",
+            download_url="https://example.invalid/example.jar",
+            release_type=1,
+            game_versions=["1.21.1"],
+            server_pack_file_id=None,
+            file_date=None,
+        )
+
+    def download(self, url: str, destination: str) -> None:
+        assert url == "https://example.invalid/example.jar"
+        Path(destination).write_bytes(b"jar")

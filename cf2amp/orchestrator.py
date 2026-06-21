@@ -40,10 +40,21 @@ class Orchestrator:
             LOGGER.info("backup_created", extra={"run_id": run_id, "backup": str(backup.path)})
 
         try:
-            if config.source.type.lower() in {"localserverpack", "local-server-pack", "local_server_pack"}:
+            source_type = config.source.type.lower()
+            if source_type in {"localserverpack", "local-server-pack", "local_server_pack"}:
                 if config.source.path is None:
                     raise CurseForgeError("source.path is required for localServerPack mode")
                 result = ServerUpdater(None).update_from_local_server_pack(
+                    server_dir=server_dir,
+                    archive_path=config.source.path,
+                    minecraft_version=config.minecraft_version,
+                    remove_missing=config.update_policy.remove_missing,
+                    dry_run=dry_run,
+                )
+            elif source_type in {"localcurseforgeexport", "local-curseforge-export", "local_curseforge_export"}:
+                if config.source.path is None:
+                    raise CurseForgeError("source.path is required for localCurseForgeExport mode")
+                result = ServerUpdater(self.client).update_from_local_curseforge_export(
                     server_dir=server_dir,
                     archive_path=config.source.path,
                     minecraft_version=config.minecraft_version,
