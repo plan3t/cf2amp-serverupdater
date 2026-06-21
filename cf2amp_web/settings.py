@@ -94,18 +94,22 @@ class SettingsStore:
         self.path = path or default_config_path()
 
     def load(self) -> WebSettings:
+        env_server_dir = os.environ.get("SERVER_DIR")
+        env_amp_instances_dir = os.environ.get("AMP_INSTANCES_DIR")
         if not self.path.exists():
             return WebSettings(
                 curseforge_api_key=os.environ.get("CURSEFORGE_API_KEY"),
-                server_dir=os.environ.get("SERVER_DIR", "/server"),
-                amp_instances_dir=os.environ.get("AMP_INSTANCES_DIR", "/opt/cubecoders/amp/instances"),
+                server_dir=env_server_dir or "/server",
+                amp_instances_dir=env_amp_instances_dir or "/opt/cubecoders/amp/instances",
             )
         data = json.loads(self.path.read_text(encoding="utf-8"))
         settings = WebSettings.from_dict(data)
         if not settings.curseforge_api_key:
             settings.curseforge_api_key = os.environ.get("CURSEFORGE_API_KEY")
-        settings.server_dir = os.environ.get("SERVER_DIR", settings.server_dir)
-        settings.amp_instances_dir = os.environ.get("AMP_INSTANCES_DIR", settings.amp_instances_dir)
+        if env_server_dir and settings.server_dir in {"", "/server"}:
+            settings.server_dir = env_server_dir
+        if env_amp_instances_dir and settings.amp_instances_dir in {"", "/opt/cubecoders/amp/instances"}:
+            settings.amp_instances_dir = env_amp_instances_dir
         return settings
 
     def save(self, settings: WebSettings) -> WebSettings:
