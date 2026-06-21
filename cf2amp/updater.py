@@ -263,16 +263,32 @@ class ServerUpdater:
             raise CurseForgeError(
                 f"Modpack manifest targets Minecraft {manifest_minecraft}, expected {options.minecraft_version}"
             )
-        files = [item for item in manifest.get("files", []) if item.get("required", True)]
+        loader = self._manifest_loader(manifest)
+        files = []
+        skipped: list[str] = []
+        resolver = self._effective_fallback_resolver(options.fallback_sources)
+        for item in manifest.get("files", []):
+            if not item.get("required", True):
+                continue
+            project_id = int(item["projectID"])
+            file_id = int(item["fileID"])
+            context = FallbackContext(
+                curseforge_project_id=project_id,
+                curseforge_file_id=file_id,
+                minecraft_version=manifest_minecraft,
+                loader=loader,
+            )
+            if resolver.is_ignored(context):
+                skipped.append(f"{project_id}:{file_id} ignored by fallback policy")
+                continue
+            files.append(item)
         server_dir = options.server_dir.resolve()
         existing = state.managed_files
         desired_keys: set[str] = set()
         added: list[str] = []
         updated: list[str] = []
-        skipped: list[str] = []
         resolved_files: dict[tuple[int, int], ModpackFile] = {}
         unresolved_files: dict[tuple[int, int], str] = {}
-        loader = self._manifest_loader(manifest)
         for item in files:
             project_id = int(item["projectID"])
             file_id = int(item["fileID"])
@@ -287,7 +303,8 @@ class ServerUpdater:
             except CurseForgeError as exc:
                 unresolved_files[(project_id, file_id)] = str(exc)
                 skipped.append(f"{project_id}:{file_id} ({exc})")
-        desired_manifest = self._manifest_to_model(options.modpack_project_id, modpack_file, manifest, resolved_files)
+        filtered_manifest = {**manifest, "files": files}
+        desired_manifest = self._manifest_to_model(options.modpack_project_id, modpack_file, filtered_manifest, resolved_files)
         unmanaged_removals = self._adopt_existing_manifest_mods(
             server_dir,
             state,
@@ -400,9 +417,7 @@ class ServerUpdater:
         try:
             return self.client.get_file(project_id, file_id)
         except CurseForgeError as original_error:
-            resolver = self.fallback_resolver
-            if fallback_sources:
-                resolver = FallbackResolver([*self.fallback_resolver.sources, *fallback_sources])
+            resolver = self._effective_fallback_resolver(fallback_sources)
             fallback = resolver.resolve(
                 FallbackContext(
                     curseforge_project_id=project_id,
@@ -414,6 +429,11 @@ class ServerUpdater:
             if fallback is not None:
                 return fallback
             raise original_error
+
+    def _effective_fallback_resolver(self, fallback_sources: tuple[dict[str, Any], ...]) -> FallbackResolver:
+        if fallback_sources:
+            return FallbackResolver([*self.fallback_resolver.sources, *fallback_sources])
+        return self.fallback_resolver
 
     def _download_file(self, project_id: int, cf_file: ModpackFile, destination: Path) -> None:
         if self.client is None:

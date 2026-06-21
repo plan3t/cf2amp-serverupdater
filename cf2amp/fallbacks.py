@@ -34,6 +34,8 @@ class FallbackResolver:
             if not self._matches(source, context):
                 continue
             provider = str(source.get("provider") or source.get("type") or "").lower()
+            if provider in {"ignore", "skip", "client-only", "clientonly"}:
+                return None
             if provider == "modrinth":
                 return self._resolve_modrinth(source, context)
             if provider in {"github", "githubrelease", "github-releases", "github_release"}:
@@ -41,6 +43,15 @@ class FallbackResolver:
             if provider in {"url", "direct"}:
                 return self._resolve_direct_url(source, context)
         return None
+
+    def is_ignored(self, context: FallbackContext) -> bool:
+        for source in self.sources:
+            if not self._matches(source, context):
+                continue
+            provider = str(source.get("provider") or source.get("type") or "").lower()
+            if provider in {"ignore", "skip", "client-only", "clientonly"}:
+                return True
+        return False
 
     @staticmethod
     def _matches(source: dict[str, Any], context: FallbackContext) -> bool:

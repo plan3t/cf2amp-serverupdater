@@ -129,6 +129,29 @@ def test_local_curseforge_export_uses_configured_fallback_source(tmp_path: Path)
     assert ServerState.load(server_dir).managed_files["100"].file_id == 200
 
 
+def test_local_curseforge_export_can_ignore_client_only_manifest_entries(tmp_path: Path) -> None:
+    archive_path = make_curseforge_export(tmp_path)
+    server_dir = tmp_path / "server"
+
+    result = ServerUpdater(FailingCurseForgeClient()).update_from_local_curseforge_export(
+        server_dir=server_dir,
+        archive_path=archive_path,
+        minecraft_version="1.21.1",
+        fallback_sources=(
+            {
+                "curseforgeProjectId": 100,
+                "provider": "ignore",
+                "reason": "client-only",
+            },
+        ),
+    )
+
+    assert result.added == []
+    assert result.delta.added == []
+    assert result.skipped == ["100:200 ignored by fallback policy"]
+    assert not (server_dir / "mods" / "example.jar").exists()
+
+
 def test_minimal_yaml_config_loader(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("CURSEFORGE_API_KEY", "secret")
     config_path = tmp_path / "config.yaml"

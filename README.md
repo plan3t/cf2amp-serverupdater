@@ -74,6 +74,11 @@ resolved through CurseForge.
     "provider": "url",
     "url": "https://example.invalid/mod.jar",
     "fileName": "mod.jar"
+  },
+  {
+    "curseforgeProjectId": 433760,
+    "provider": "ignore",
+    "reason": "client-only"
   }
 ]
 ```
@@ -81,8 +86,9 @@ resolved through CurseForge.
 `provider: "modrinth"` chooses the latest version matching the manifest's
 Minecraft version and loader. `provider: "github"` reads the latest GitHub
 release and downloads the first JAR asset matching `assetPattern`. Use
-`curseforgeFileId` when one CurseForge project needs different fallback sources
-for different files.
+`provider: "ignore"` for client-only or resource-pack entries that should not be
+installed on the server. Use `curseforgeFileId` when one CurseForge project
+needs different fallback sources for different files.
 
 ## Web UI
 
@@ -101,6 +107,13 @@ cf2amp-web
 
 The web app supports AMP instance scanning, settings management, server-pack ZIP
 uploads, update previews, live update logs, backup listing, and rollback jobs.
+
+## Testing
+
+```bash
+python -m pip install -e ".[dev]"
+python -m pytest
+```
 
 ## Docker
 
