@@ -65,8 +65,26 @@ def test_local_curseforge_export_preview_uses_manifest_delta(tmp_path: Path) -> 
     )
 
     assert result.mode == "manifest"
-    assert [item.file_name for item in result.delta.added] == ["100-200.jar"]
+    assert [item.file_name for item in result.delta.added] == ["example.jar"]
     assert not (server_dir / "mods" / "example.jar").exists()
+
+
+def test_local_curseforge_export_adopts_existing_matching_mods(tmp_path: Path) -> None:
+    archive_path = make_curseforge_export(tmp_path)
+    server_dir = tmp_path / "server"
+    mods_dir = server_dir / "mods"
+    mods_dir.mkdir(parents=True)
+    (mods_dir / "example.jar").write_bytes(b"jar")
+
+    result = ServerUpdater(FakeCurseForgeClient()).update_from_local_curseforge_export(
+        server_dir=server_dir,
+        archive_path=archive_path,
+        minecraft_version="1.21.1",
+    )
+
+    assert result.added == []
+    assert [item.file_name for item in result.delta.unchanged] == ["example.jar"]
+    assert ServerState.load(server_dir).managed_files["100"].file_id == 200
 
 
 def test_local_curseforge_export_installs_referenced_mods(tmp_path: Path) -> None:

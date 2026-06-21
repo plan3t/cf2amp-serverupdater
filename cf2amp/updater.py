@@ -261,10 +261,31 @@ class ServerUpdater:
         added: list[str] = []
         updated: list[str] = []
         skipped: list[str] = []
-        desired_manifest = self._manifest_to_model(options.modpack_project_id, modpack_file, manifest)
+        resolved_files: dict[tuple[int, int], ModpackFile] = {}
+        for item in files:
+            project_id = int(item["projectID"])
+            file_id = int(item["fileID"])
+            try:
+                resolved_files[(project_id, file_id)] = self.client.get_file(project_id, file_id)
+            except CurseForgeError as exc:
+                skipped.append(f"{project_id}:{file_id} ({exc})")
+        desired_manifest = self._manifest_to_model(options.modpack_project_id, modpack_file, manifest, resolved_files)
+        unmanaged_removals = self._adopt_existing_manifest_mods(
+            server_dir,
+            state,
+            desired_manifest,
+            options.remove_missing,
+        )
         from .delta import DeltaEngine
 
         delta = DeltaEngine().calculate(state, desired_manifest, options.remove_missing)
+        if unmanaged_removals:
+            delta = DeltaPlan(
+                added=delta.added,
+                updated=delta.updated,
+                removed=[*delta.removed, *unmanaged_removals],
+                unchanged=delta.unchanged,
+            )
 
         if options.dry_run:
             return UpdateResult(
@@ -273,7 +294,7 @@ class ServerUpdater:
                 sorted(item.file_name for item in delta.added),
                 sorted(item.file_name for _, item in delta.updated),
                 sorted(item.file_name for item in delta.removed),
-                [],
+                sorted(skipped),
                 delta,
             )
 
@@ -291,7 +312,7 @@ class ServerUpdater:
                 if previous and previous.file_id == file_id and (server_dir / previous.path).exists():
                     continue
                 try:
-                    cf_file = self.client.get_file(project_id, file_id)
+                    cf_file = resolved_files.get((project_id, file_id)) or self.client.get_file(project_id, file_id)
                     target_name = self._safe_jar_name(cf_file.file_name, project_id, file_id)
                     download_to = tmp_path / target_name
                     self._download_file(project_id, cf_file, download_to)
@@ -324,6 +345,9 @@ class ServerUpdater:
             self._remove_if_exists(server_dir / managed.path, options.dry_run)
             removed.append(managed.path)
             state.managed_files.pop(key, None)
+        for mod in unmanaged_removals:
+            self._remove_if_exists(server_dir / mod.file_name, options.dry_run)
+            removed.append(mod.file_name)
 
         state.modpack_project_id = options.modpack_project_id
         state.modpack_file_id = modpack_file.id
@@ -351,7 +375,9 @@ class ServerUpdater:
         project_id: int,
         modpack_file: ModpackFile,
         manifest: dict[str, Any],
+        resolved_files: dict[tuple[int, int], ModpackFile] | None = None,
     ) -> ModpackManifest:
+        resolved_files = resolved_files or {}
         minecraft = manifest.get("minecraft", {})
         loaders = minecraft.get("modLoaders", [])
         loader_id = loaders[0].get("id") if loaders else None
@@ -372,12 +398,63 @@ class ServerUpdater:
                 ModMetadata(
                     mod_id=int(item["projectID"]),
                     file_id=int(item["fileID"]),
-                    file_name=f"{item['projectID']}-{item['fileID']}.jar",
+                    file_name=ServerUpdater._manifest_item_file_name(item, resolved_files),
                 )
                 for item in manifest.get("files", [])
                 if item.get("required", True)
             ],
         )
+
+    @staticmethod
+    def _manifest_item_file_name(
+        item: dict[str, Any],
+        resolved_files: dict[tuple[int, int], ModpackFile],
+    ) -> str:
+        project_id = int(item["projectID"])
+        file_id = int(item["fileID"])
+        cf_file = resolved_files.get((project_id, file_id))
+        if cf_file:
+            return ServerUpdater._safe_jar_name(cf_file.file_name, project_id, file_id)
+        return f"{project_id}-{file_id}.jar"
+
+    def _adopt_existing_manifest_mods(
+        self,
+        server_dir: Path,
+        state: ServerState,
+        desired: ModpackManifest,
+        remove_missing: bool,
+    ) -> list[ModMetadata]:
+        mods_dir = server_dir / "mods"
+        if not mods_dir.exists() or not mods_dir.is_dir():
+            return []
+        existing_files = {
+            path.name: path
+            for path in mods_dir.glob("*.jar")
+            if path.is_file()
+        }
+        desired_names = {item.file_name for item in desired.mods}
+        for mod in desired.mods:
+            key = str(mod.mod_id)
+            path = existing_files.get(mod.file_name)
+            if path and key not in state.managed_files:
+                state.managed_files[key] = ManagedFile(
+                    project_id=mod.mod_id,
+                    file_id=mod.file_id,
+                    path=str(Path("mods") / path.name),
+                    sha256=self._sha256_file(path),
+                )
+        if not remove_missing:
+            return []
+        return [
+            ModMetadata(
+                mod_id=0,
+                file_id=0,
+                file_name=str(Path("mods") / path.name),
+                sha256=self._sha256_file(path),
+            )
+            for name, path in sorted(existing_files.items())
+            if name not in desired_names
+        ]
 
     @staticmethod
     def _server_pack_mods(archive: zipfile.ZipFile) -> dict[str, str]:
