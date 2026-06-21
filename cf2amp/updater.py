@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from .curseforge import CurseForgeClient, CurseForgeError, ModpackFile
+from .fallbacks import FallbackContext, FallbackResolver
 from .models import DeltaPlan, ModMetadata, ModpackManifest
 from .state import ManagedFile, ServerState
 
@@ -23,6 +24,7 @@ class UpdateOptions:
     use_server_pack: bool = True
     remove_missing: bool = False
     dry_run: bool = False
+    fallback_sources: tuple[dict[str, Any], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -37,8 +39,13 @@ class UpdateResult:
 
 
 class ServerUpdater:
-    def __init__(self, client: CurseForgeClient | None) -> None:
+    def __init__(
+        self,
+        client: CurseForgeClient | None,
+        fallback_sources: tuple[dict[str, Any], ...] | list[dict[str, Any]] = (),
+    ) -> None:
         self.client = client
+        self.fallback_resolver = FallbackResolver(fallback_sources)
 
     def update(self, options: UpdateOptions) -> UpdateResult:
         if self.client is None:
@@ -116,6 +123,7 @@ class ServerUpdater:
         minecraft_version: str | None = None,
         remove_missing: bool = False,
         dry_run: bool = False,
+        fallback_sources: tuple[dict[str, Any], ...] = (),
     ) -> UpdateResult:
         if self.client is None:
             raise CurseForgeError("CurseForge client is required for CurseForge export ZIP updates")
@@ -154,6 +162,7 @@ class ServerUpdater:
                 use_server_pack=False,
                 remove_missing=remove_missing,
                 dry_run=dry_run,
+                fallback_sources=fallback_sources,
             )
             state = ServerState.load(server_dir)
             return self._apply_manifest_pack(zf, options, state, modpack_file)
@@ -262,12 +271,21 @@ class ServerUpdater:
         updated: list[str] = []
         skipped: list[str] = []
         resolved_files: dict[tuple[int, int], ModpackFile] = {}
+        unresolved_files: dict[tuple[int, int], str] = {}
+        loader = self._manifest_loader(manifest)
         for item in files:
             project_id = int(item["projectID"])
             file_id = int(item["fileID"])
             try:
-                resolved_files[(project_id, file_id)] = self.client.get_file(project_id, file_id)
+                resolved_files[(project_id, file_id)] = self._resolve_manifest_file(
+                    project_id,
+                    file_id,
+                    manifest_minecraft,
+                    loader,
+                    options.fallback_sources,
+                )
             except CurseForgeError as exc:
+                unresolved_files[(project_id, file_id)] = str(exc)
                 skipped.append(f"{project_id}:{file_id} ({exc})")
         desired_manifest = self._manifest_to_model(options.modpack_project_id, modpack_file, manifest, resolved_files)
         unmanaged_removals = self._adopt_existing_manifest_mods(
@@ -312,12 +330,25 @@ class ServerUpdater:
                 if previous and previous.file_id == file_id and (server_dir / previous.path).exists():
                     continue
                 try:
-                    cf_file = resolved_files.get((project_id, file_id)) or self.client.get_file(project_id, file_id)
+                    cf_file = resolved_files.get((project_id, file_id))
+                    if cf_file is None:
+                        error = unresolved_files.get((project_id, file_id))
+                        if error:
+                            raise CurseForgeError(error)
+                        cf_file = self._resolve_manifest_file(
+                            project_id,
+                            file_id,
+                            manifest_minecraft,
+                            loader,
+                            options.fallback_sources,
+                        )
                     target_name = self._safe_jar_name(cf_file.file_name, project_id, file_id)
                     download_to = tmp_path / target_name
                     self._download_file(project_id, cf_file, download_to)
                 except CurseForgeError as exc:
-                    skipped.append(f"{project_id}:{file_id} ({exc})")
+                    message = f"{project_id}:{file_id} ({exc})"
+                    if message not in skipped:
+                        skipped.append(message)
                     continue
 
                 if previous:
@@ -355,6 +386,34 @@ class ServerUpdater:
             state.save(server_dir)
 
         return UpdateResult(modpack_file, "manifest", sorted(added), sorted(updated), removed, skipped, delta)
+
+    def _resolve_manifest_file(
+        self,
+        project_id: int,
+        file_id: int,
+        minecraft_version: str | None,
+        loader: str | None,
+        fallback_sources: tuple[dict[str, Any], ...],
+    ) -> ModpackFile:
+        if self.client is None:
+            raise CurseForgeError("CurseForge client is required for manifest-based updates")
+        try:
+            return self.client.get_file(project_id, file_id)
+        except CurseForgeError as original_error:
+            resolver = self.fallback_resolver
+            if fallback_sources:
+                resolver = FallbackResolver([*self.fallback_resolver.sources, *fallback_sources])
+            fallback = resolver.resolve(
+                FallbackContext(
+                    curseforge_project_id=project_id,
+                    curseforge_file_id=file_id,
+                    minecraft_version=minecraft_version,
+                    loader=loader,
+                )
+            )
+            if fallback is not None:
+                return fallback
+            raise original_error
 
     def _download_file(self, project_id: int, cf_file: ModpackFile, destination: Path) -> None:
         if self.client is None:
@@ -404,6 +463,15 @@ class ServerUpdater:
                 if item.get("required", True)
             ],
         )
+
+    @staticmethod
+    def _manifest_loader(manifest: dict[str, Any]) -> str | None:
+        minecraft = manifest.get("minecraft", {})
+        loaders = minecraft.get("modLoaders", [])
+        loader_id = loaders[0].get("id") if loaders else None
+        if loader_id and "-" in loader_id:
+            return loader_id.split("-", 1)[0]
+        return loader_id
 
     @staticmethod
     def _manifest_item_file_name(

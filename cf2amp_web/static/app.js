@@ -35,6 +35,14 @@ async function api(path, options = {}) {
 }
 
 function formToSettings() {
+  let fallbackSources = [];
+  const fallbackText = $("fallbackSources").value.trim();
+  if (fallbackText) {
+    fallbackSources = JSON.parse(fallbackText);
+    if (!Array.isArray(fallbackSources)) {
+      throw new Error("Fallback-Quellen mÃ¼ssen ein JSON-Array sein");
+    }
+  }
   return {
     source_type: $("sourceTypeInput").value,
     curseforge_api_key: $("apiKey").value,
@@ -48,6 +56,7 @@ function formToSettings() {
     remove_missing: $("removeMissing").checked,
     prefer_server_pack: $("preferServerPack").checked,
     rollback_on_failure: $("rollbackOnFailure").checked,
+    fallback_sources: fallbackSources,
   };
 }
 
@@ -64,6 +73,7 @@ function fillSettings(settings) {
   $("removeMissing").checked = Boolean(settings.remove_missing);
   $("preferServerPack").checked = Boolean(settings.prefer_server_pack);
   $("rollbackOnFailure").checked = Boolean(settings.rollback_on_failure);
+  $("fallbackSources").value = JSON.stringify(settings.fallback_sources || [], null, 2);
   $("apiKeyState").textContent = settings.has_api_key ? "API-Key gespeichert" : "Kein API-Key gespeichert";
   $("serverDir").textContent = settings.server_dir || "-";
   $("sourceType").textContent = settings.source_type || "-";

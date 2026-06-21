@@ -60,6 +60,7 @@ class Orchestrator:
                     minecraft_version=config.minecraft_version,
                     remove_missing=config.update_policy.remove_missing,
                     dry_run=dry_run,
+                    fallback_sources=config.fallback_sources,
                 )
             else:
                 result = ServerUpdater(self.client).update(
@@ -70,6 +71,7 @@ class Orchestrator:
                         use_server_pack=config.update_policy.prefer_server_pack,
                         remove_missing=config.update_policy.remove_missing,
                         dry_run=dry_run,
+                        fallback_sources=config.fallback_sources,
                     )
                 )
             warnings.extend(result.skipped)

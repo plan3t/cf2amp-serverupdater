@@ -248,6 +248,7 @@ def preview_update(settings: WebSettings):
             minecraft_version=config.minecraft_version,
             remove_missing=config.update_policy.remove_missing,
             dry_run=True,
+            fallback_sources=config.fallback_sources,
         )
     if not config.curseforge_api_key:
         raise RuntimeError("CurseForge Core API key is required for API preview")
@@ -259,6 +260,7 @@ def preview_update(settings: WebSettings):
             use_server_pack=config.update_policy.prefer_server_pack,
             remove_missing=config.update_policy.remove_missing,
             dry_run=True,
+            fallback_sources=config.fallback_sources,
         )
     )
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -46,6 +46,7 @@ class WebSettings:
     rollback_on_failure: bool = True
     startup_validation_seconds: int = 20
     backups_to_keep: int = 3
+    fallback_sources: list[dict[str, Any]] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "WebSettings":
@@ -86,6 +87,7 @@ class WebSettings:
                 include_world=True,
                 include_config=True,
             ),
+            fallback_sources=tuple(self.fallback_sources or []),
         )
 
 

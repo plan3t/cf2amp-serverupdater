@@ -42,6 +42,7 @@ class AppConfig:
     loader: str | None = None
     update_policy: UpdatePolicy = UpdatePolicy()
     backup_policy: BackupPolicy = BackupPolicy()
+    fallback_sources: tuple[dict[str, Any], ...] = ()
 
 
 def load_config(path: Path) -> AppConfig:
@@ -58,6 +59,9 @@ def load_config(path: Path) -> AppConfig:
     curseforge_api_key = data.get("curseforgeApiKey") or os.environ.get("CURSEFORGE_API_KEY")
     policy = data.get("updatePolicy", {})
     backup = data.get("backupPolicy", {})
+    fallback_sources = data.get("fallbackSources", [])
+    if not isinstance(fallback_sources, list):
+        fallback_sources = []
     return AppConfig(
         curseforge_api_key=curseforge_api_key,
         modpack_id=int(data.get("modpackId", 0)),
@@ -83,6 +87,7 @@ def load_config(path: Path) -> AppConfig:
             include_world=bool(backup.get("includeWorld", True)),
             include_config=bool(backup.get("includeConfig", True)),
         ),
+        fallback_sources=tuple(item for item in fallback_sources if isinstance(item, dict)),
     )
 
 

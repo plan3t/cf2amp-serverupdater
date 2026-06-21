@@ -28,3 +28,27 @@ def test_environment_server_dir_seeds_first_run(tmp_path: Path, monkeypatch) -> 
     loaded = SettingsStore(tmp_path / "missing.json").load()
 
     assert loaded.server_dir == "/home/amp/.ampdata/instances"
+
+
+def test_web_settings_preserves_fallback_sources(tmp_path: Path) -> None:
+    config_path = tmp_path / "cf2amp-web.json"
+    settings = WebSettings(
+        fallback_sources=[
+            {
+                "curseforgeProjectId": 448233,
+                "provider": "modrinth",
+                "project": "entityculling",
+            }
+        ]
+    )
+    SettingsStore(config_path).save(settings)
+
+    loaded = SettingsStore(config_path).load()
+
+    assert loaded.fallback_sources == [
+        {
+            "curseforgeProjectId": 448233,
+            "provider": "modrinth",
+            "project": "entityculling",
+        }
+    ]

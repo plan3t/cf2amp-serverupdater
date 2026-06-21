@@ -45,9 +45,44 @@ minecraftVersion: "1.21.1"
 
 CurseForge Share/Export ZIPs are different from server packs. They contain
 `manifest.json` and `overrides/`, but usually no `mods/*.jar` files. cf2amp can
-detect them and explain why they cannot be applied directly. Upload the real
-server-pack ZIP instead, or use a CurseForge Core API key once manifest-based
-downloads are enabled.
+apply them with a CurseForge Core API key by resolving the manifest's referenced
+mods and downloading only the required delta.
+
+## Fallback Sources
+
+Some CurseForge files return `403` through the Core API. For those cases, add
+fallback sources in the web UI as JSON. CurseForge remains the primary source;
+fallbacks are only used for matching `projectID`/`fileID` entries that cannot be
+resolved through CurseForge.
+
+```json
+[
+  {
+    "curseforgeProjectId": 448233,
+    "provider": "modrinth",
+    "project": "entityculling"
+  },
+  {
+    "curseforgeProjectId": 676721,
+    "provider": "github",
+    "repo": "Create-Aeronautics/Create-Aeronautics",
+    "assetPattern": "*1.21.1*.jar"
+  },
+  {
+    "curseforgeProjectId": 123456,
+    "curseforgeFileId": 789000,
+    "provider": "url",
+    "url": "https://example.invalid/mod.jar",
+    "fileName": "mod.jar"
+  }
+]
+```
+
+`provider: "modrinth"` chooses the latest version matching the manifest's
+Minecraft version and loader. `provider: "github"` reads the latest GitHub
+release and downloads the first JAR asset matching `assetPattern`. Use
+`curseforgeFileId` when one CurseForge project needs different fallback sources
+for different files.
 
 ## Web UI
 

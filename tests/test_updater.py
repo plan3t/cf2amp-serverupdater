@@ -4,7 +4,7 @@ import zipfile
 from pathlib import Path
 
 from cf2amp.config import load_config
-from cf2amp.curseforge import ModpackFile
+from cf2amp.curseforge import CurseForgeError, ModpackFile
 from cf2amp.delta import DeltaEngine
 from cf2amp.models import ModMetadata, ModpackManifest
 from cf2amp.state import ManagedFile, ServerState
@@ -103,6 +103,32 @@ def test_local_curseforge_export_installs_referenced_mods(tmp_path: Path) -> Non
     assert ServerState.load(server_dir).managed_files["100"].file_id == 200
 
 
+def test_local_curseforge_export_uses_configured_fallback_source(tmp_path: Path) -> None:
+    archive_path = make_curseforge_export(tmp_path)
+    server_dir = tmp_path / "server"
+
+    result = ServerUpdater(FailingCurseForgeClient()).update_from_local_curseforge_export(
+        server_dir=server_dir,
+        archive_path=archive_path,
+        minecraft_version="1.21.1",
+        fallback_sources=(
+            {
+                "curseforgeProjectId": 100,
+                "curseforgeFileId": 200,
+                "provider": "url",
+                "url": "https://fallback.invalid/example.jar",
+                "fileName": "example.jar",
+            },
+        ),
+    )
+
+    installed = server_dir / "mods" / "example.jar"
+    assert result.added == ["example.jar"]
+    assert result.skipped == []
+    assert installed.read_bytes() == b"fallback-jar"
+    assert ServerState.load(server_dir).managed_files["100"].file_id == 200
+
+
 def test_minimal_yaml_config_loader(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("CURSEFORGE_API_KEY", "secret")
     config_path = tmp_path / "config.yaml"
@@ -169,3 +195,12 @@ class FakeCurseForgeClient:
     def download(self, url: str, destination: str) -> None:
         assert url == "https://example.invalid/example.jar"
         Path(destination).write_bytes(b"jar")
+
+
+class FailingCurseForgeClient:
+    def get_file(self, mod_id: int, file_id: int) -> ModpackFile:
+        raise CurseForgeError("CurseForge API error 403")
+
+    def download(self, url: str, destination: str) -> None:
+        assert url == "https://fallback.invalid/example.jar"
+        Path(destination).write_bytes(b"fallback-jar")
